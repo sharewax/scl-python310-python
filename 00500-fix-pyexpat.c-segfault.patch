@@ -1,0 +1,14 @@
+--- Python-3.10.0-orig/Modules/pyexpat.c	2021-10-04 17:40:46.000000000 +0000
++++ Python-3.10.0/Modules/pyexpat.c	2021-10-21 10:00:06.866203529 +0000
+@@ -1204,10 +1204,10 @@
+ xmlparse_dealloc(xmlparseobject *self)
+ {
+     PyObject_GC_UnTrack(self);
++    (void)xmlparse_clear(self);
+     if (self->itself != NULL)
+         XML_ParserFree(self->itself);
+     self->itself = NULL;
+-    (void)xmlparse_clear(self);
+ 
+     if (self->handlers != NULL) {
+         PyMem_Free(self->handlers);

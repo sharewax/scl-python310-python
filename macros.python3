@@ -61,7 +61,7 @@
 
 %@scl@py3_install_wheel_start() %{expand:\\\
   %{?scl:scl enable @vendorscl@ '}\\\
-  CFLAGS="%{optflags}" %{python38__python3} -m pip install -I dist/}
+  CFLAGS="%{optflags}" %{python310__python3} -m pip install -I dist/}
 
 %@scl@py3_install_wheel_end() %{expand:\\\
   --root %{buildroot} --no-deps\\\

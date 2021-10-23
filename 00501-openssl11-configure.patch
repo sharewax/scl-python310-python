@@ -1,0 +1,17 @@
+diff -Nura Python-3.10.0-orig/aclocal.m4 Python-3.10.0/aclocal.m4
+--- Python-3.10.0-orig/aclocal.m4	2021-10-04 17:40:46.000000000 +0000
++++ Python-3.10.0/aclocal.m4	2021-10-21 20:04:16.251057659 +0000
+@@ -205,10 +205,10 @@
+             # then use that information and don't search ssldirs
+             AC_CHECK_TOOL([PKG_CONFIG], [pkg-config])
+             if test x"$PKG_CONFIG" != x""; then
+-                OPENSSL_LDFLAGS=`$PKG_CONFIG openssl --libs-only-L 2>/dev/null`
++                OPENSSL_LDFLAGS=`$PKG_CONFIG openssl11 --libs-only-L 2>/dev/null`
+                 if test $? = 0; then
+-                    OPENSSL_LIBS=`$PKG_CONFIG openssl --libs-only-l 2>/dev/null`
+-                    OPENSSL_INCLUDES=`$PKG_CONFIG openssl --cflags-only-I 2>/dev/null`
++                    OPENSSL_LIBS=`$PKG_CONFIG openssl11 --libs-only-l 2>/dev/null`
++                    OPENSSL_INCLUDES=`$PKG_CONFIG openssl11 --cflags-only-I 2>/dev/null`
+                     found=true
+                 fi
+             fi

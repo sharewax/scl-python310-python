@@ -9,10 +9,10 @@
 # Top-level metadata
 # ==================
 
-%global pybasever 3.8
+%global pybasever 3.10
 
 # pybasever without the dot:
-%global pyshortver 38
+%global pyshortver 310
 
 Name: %{?scl_prefix}python
 Summary: Interpreter of the Python programming language
@@ -20,11 +20,11 @@ URL: https://www.python.org/
 
 #  WARNING  When rebasing to a new Python version,
 #           remember to update the python3-docs package as well
-%global general_version %{pybasever}.11
+%global general_version %{pybasever}.0
 #global prerel ...
 %global upstream_version %{general_version}%{?prerel}
 Version: %{general_version}%{?prerel:~%{prerel}}
-Release: 2%{?dist}
+Release: 1%{?dist}
 License: Python
 
 # ==================================
@@ -55,11 +55,16 @@ License: Python
 #   IMPORTANT: When bootstrapping, it's very likely the wheels for pip and
 #   setuptools are not available. Turn off the rpmwheels bcond until
 #   the two packages are built with wheels to get around the issue.
-%bcond_with bootstrap
+# temporary enable bootstrap
+%bcond_without bootstrap
 
 # Whether to use RPM build wheels from the python-{pip,setuptools}-wheel package
 # Uses upstream bundled prebuilt wheels otherwise
-%bcond_without rpmwheels
+%bcond_with rpmwheels
+
+%global pip_version 21.2.3
+%global setuptools_version 57.4.0
+
 
 # Expensive optimizations (mainly, profile-guided optimizations)
 %bcond_without optimizations
@@ -132,16 +137,16 @@ BuildRequires: %{?scl_prefix}python-rpm-macros
 # scripts.
 # Note that the macros point to a file in the buildroot which will already be
 # copied there by the time this macros are invoked in %%__os_install_post.
-%{?scl:%global python38_python_provides %{buildroot}%{_root_prefix}/lib/rpm/pythondeps-scl-38.sh --provides %{scl}-}
-%{?scl:%global python38_python_requires %{buildroot}%{_root_prefix}/lib/rpm/pythondeps-scl-38.sh --requires %{scl}-}
+%{?scl:%global python310_python_provides %{buildroot}%{_root_prefix}/lib/rpm/pythondeps-scl-310.sh --provides %{scl}-}
+%{?scl:%global python310_python_requires %{buildroot}%{_root_prefix}/lib/rpm/pythondeps-scl-310.sh --requires %{scl}-}
 %endif
 
 
-# Set python3_pkgversion so that python_provide macro works for python38-
+# Set python3_pkgversion so that python_provide macro works for python310-
 # prefixes in this spec file
-# This is also set in the python38-rpm-macros package so that it works in other
+# This is also set in the python310-rpm-macros package so that it works in other
 # packages of this module.
-%global python3_pkgversion 38
+%global python3_pkgversion 310
 
 %global pylibdir %{_libdir}/python%{pybasever}
 %global dynload_dir %{pylibdir}/lib-dynload
@@ -232,7 +237,11 @@ BuildRequires: libuuid-devel
 BuildRequires: libX11-devel
 BuildRequires: ncurses-devel
 
-BuildRequires: openssl-devel
+%if 0%{?fedora} || 0%{?rhel} >= 8
+BuildRequires:     openssl-devel
+%else
+BuildRequires:     openssl11-devel
+%endif
 BuildRequires: pkgconfig
 BuildRequires: readline-devel
 BuildRequires: redhat-rpm-config
@@ -285,11 +294,11 @@ Source10: idle3.desktop
 Source11: idle3.appdata.xml
 
 # SCL-custom version of pythondeps.sh
-# Append 36 to not collide with python27 SCL
-Source20: pythondeps-scl-38.sh
+# Append 310 to not collide with python27 SCL
+Source20: pythondeps-scl-310.sh
 # SCL:
-# Append 36 for the same reason here
-Source21: brp-python-bytecompile-with-scl-python-38
+# Append 310 for the same reason here
+Source21: brp-python-bytecompile-with-scl-python-310
 # SCL:
 # Supply an RPM macro "py_byte_compile" for the python3-devel subpackage
 # to enable specfiles to selectively byte-compile individual files and paths
@@ -309,23 +318,49 @@ Source25: macros.python-srpm
 # Was Patch0 in ivazquez' python3000 specfile:
 Patch1:         00001-rpath.patch
 
+# DOESN'T need anymore after --with-platlibdir=%{_lib} support in python 3.9
+# bpo-1294959
 # 00102 #
 # Change the various install paths to use /usr/lib64/ instead or /usr/lib
 # Only used when "%%{_lib}" == "lib64"
 # Not yet sent upstream.
-Patch102: 00102-lib64.patch
+#
+# Patch102: 00102-lib64.patch
 
 # 00111 #
+# fixed by --without-static-libpython and it's built and enabled by default in configure
 # Patch the Makefile.pre.in so that the generated Makefile doesn't try to build
 # a libpythonMAJOR.MINOR.a
 # See https://bugzilla.redhat.com/show_bug.cgi?id=556092
 # Downstream only: not appropriate for upstream
-Patch111: 00111-no-static-lib.patch
+#Patch111: 00111-no-static-lib.patch
 
 # 00189 #
-# Instead of bundled wheels, use our RPM packaged wheels from
-# /usr/share/python38-wheels
-Patch189: 00189-use-rpm-wheels.patch
+# doesn't need anymore since --with-wheel-pkg-dir directive
+# Instead of bundled wheels, use our SCL RPM packaged wheels from
+# /usr/share/python-wheels
+#Patch189: 00189-use-rpm-wheels.patch
+
+
+# 00251 # 0952e38e5bf725ebbab48b13a35566e30635ddf8
+# Change user install location
+#
+# Change the values of sysconfig's "posix_prefix" install scheme to /usr/local
+# when RPM build or venv/virtualenv is not detected,
+# to make pip, sysconfig and distutils install into an isolated location.
+#
+# The original values are saved as an additional "rpm_prefix" install scheme.
+#
+# The site module adds the /usr/local paths to sys.path when site packages are
+# enabled and RPM build is not detected.
+#
+# Fedora Change: https://fedoraproject.org/wiki/Changes/Making_sudo_pip_safe
+#
+# Rewrote in Fedora 36+ to patch sysconfig instead of distutils,
+# see https://discuss.python.org/t/pep-632-deprecate-distutils-module/5134/104
+#
+# Downstream only for now, waiting for https://bugs.python.org/issue43976
+Patch251: 00251-change-user-install-location.patch
 
 # 00251
 # Set values of prefix and exec_prefix in distutils install command
@@ -336,7 +371,7 @@ Patch189: 00189-use-rpm-wheels.patch
 # SCL: This patch contains hardcoded location for /usr/local that needed to be
 # modified for SCLs: the `PREFIXES.insert` variable now contains a hardcoded
 # path to /usr/local inside the SCL root folder
-Patch251: 00251-change-user-install-location.patch
+#Patch251: 00251-change-user-install-location.patch
 
 # 00274 #
 # Upstream uses Debian-style architecture naming. Change to match Fedora.
@@ -352,38 +387,14 @@ Patch300: 00300-change-so-version-scl.patch
 # See https://src.fedoraproject.org/rpms/redhat-rpm-config/pull-request/57#comment-27426
 Patch328: 00328-pyc-timestamp-invalidation-mode.patch
 
-# 00329 #
-# Support OpenSSL FIPS mode
-# - Fallback implementations md5, sha1, sha256, sha512 are removed in favor of OpenSSL wrappers
-# - In FIPS mode, OpenSSL wrappers are always used in hashlib
-# - add a new "usedforsecurity" keyword argument to the various digest
-#   algorithms in hashlib so that you can whitelist a callsite with
-#   "usedforsecurity=False"
-#   The change has been implemented upstream since Python 3.9:
-#   https://bugs.python.org/issue9216
-# - OpenSSL wrappers for the hashes blake2{b512,s256},
-#     sha3_{224,256,384,512}, shake_{128,256} are now exported from _hashlib
-# - In FIPS mode, the blake2, sha3 and shake hashes use OpenSSL wrappers
-#   and do not offer extended functionality (keys, tree hashing, custom digest size)
-# - In FIPS mode, hmac.HMAC can only be instantiated with an OpenSSL wrapper
-#   or an string with OpenSSL hash name as the "digestmod" argument.
-#   The argument must be specified (instead of defaulting to ‘md5’).
-#
-# Resolves: rhbz#1817494
-Patch329: 00329-fips.patch
+# 00500 #
+# Fix freed memory access in :class:`pyexpat.xmlparser` when building it with an
+# installed expat library <= 2.2.0. https://bugs.python.org/issue45329
+Patch500: 00500-fix-pyexpat.c-segfault.patch
 
-# 00359 #
-# CVE-2021-23336 python: Web Cache Poisoning via urllib.parse.parse_qsl and
-# urllib.parse.parse_qs by using a semicolon in query parameters
-# Upstream: https://bugs.python.org/issue42967
-# Main BZ: https://bugzilla.redhat.com/show_bug.cgi?id=1928904
-Patch359: 00359-CVE-2021-23336.patch
-
-# 00365 #
-# CVE-2021-29921: Improper input validation of octal strings in the ipaddress module
-# Upstream: https://bugs.python.org/issue36384
-# Main bugzilla: https://bugzilla.redhat.com/show_bug.cgi?id=1957458
-Patch365: 00365-CVE-2021-29921.patch
+# 00501 #
+# Can't find correctly openssl11 libs in configure script
+Patch501: 00501-openssl11-configure.patch
 
 # (New patches go here ^^^)
 #
@@ -505,8 +516,8 @@ Summary:        Python runtime libraries
 Requires: %{?scl_prefix}python-setuptools-wheel
 Requires: %{?scl_prefix}python-pip-wheel
 %else
-Provides: bundled(%{?scl_prefix}python-pip) = 19.2.3
-Provides: bundled(%{?scl_prefix}python-setuptools) = 41.2.0
+Provides: bundled(%{?scl_prefix}python-pip) = %{pip_version}
+Provides: bundled(%{?scl_prefix}python-setuptools) = %{setuptools_version}
 %endif
 
 # There are files in the standard library that have python shebang.
@@ -538,8 +549,8 @@ Requires: %{?scl_prefix}python-setuptools
 
 # we filtered provides of pkgconfig on rhel7 so we need to manully re add them
 Provides: %{?scl_prefix}pkgconfig(python) = %{version}-%{release}
-Provides: %{?scl_prefix}pkgconfig(python-3.8m) = %{version}-%{release}
-Provides: %{?scl_prefix}pkgconfig(python-3.8) = %{version}-%{release}
+Provides: %{?scl_prefix}pkgconfig(python-3.10m) = %{version}-%{release}
+Provides: %{?scl_prefix}pkgconfig(python-3.10) = %{version}-%{release}
 Provides: %{?scl_prefix}pkgconfig(python3) = %{version}-%{release}
 
 # Fix for rhbz#1144601
@@ -553,8 +564,8 @@ into other programs, and to make binary distributions for Python libraries.
 It also contains the necessary macros to build RPM packages with Python modules
 and 2to3 tool, an automatic source converter from Python 2.X.
 
-If you want to build an RPM against the python38 module, you also need to
-install the python38-rpm-macros package.
+If you want to build an RPM against the python310 module, you also need to
+install the python310-rpm-macros package.
 
 
 %package idle
@@ -616,10 +627,10 @@ Requires: %{name}-tkinter%{?_isa} = %{version}-%{release}
 Requires: %{name}-idle%{?_isa} = %{version}-%{release}
 
 # we filtered provides of pkgconfig on rhel7 so we need to manully re add them
-Provides: %{?scl_prefix}pkgconfig(python-3.8dm) = %{version}-%{release}
+Provides: %{?scl_prefix}pkgconfig(python-3.10dm) = %{version}-%{release}
 
 %description debug
-python38-debug provides a version of the Python runtime with numerous debugging
+python310-debug provides a version of the Python runtime with numerous debugging
 features enabled, aimed at advanced Python users such as developers of Python
 extension modules.
 
@@ -646,8 +657,8 @@ The debug runtime additionally supports debug builds of C-API extensions
 Requires: %{?scl_prefix}python-setuptools-wheel
 Requires: %{?scl_prefix}python-pip-wheel
 %else
-Provides: bundled(%{?scl_prefix}python-pip) = 19.2.3
-Provides: bundled(%{?scl_prefix}python-setuptools) = 41.2.0
+Provides: bundled(%{?scl_prefix}python-pip) = %{pip_version}
+Provides: bundled(%{?scl_prefix}python-setuptools) = %{setuptools_version}
 %endif
 
 # The description for the flat package
@@ -664,23 +675,23 @@ version once Python %{pybasever} is stable.
 
 # python-rpm-macros subpackages
 %package rpm-macros
-Summary:    RPM macros for building RPMs with Python 3.8
+Summary:    RPM macros for building RPMs with Python 3.10
 BuildArch:  noarch
 %{?scl:Requires: %{scl}-runtime}
 
 %description rpm-macros
-RPM macros for building RPMs with Python 3.8 from the python38 module.
-If you want to build an RPM against the python38 module, you need to
-BuildRequire: python38-rpm-macros.
+RPM macros for building RPMs with Python 3.10 from the python310 module.
+If you want to build an RPM against the python310 module, you need to
+BuildRequire: python310-rpm-macros.
 
 
 %package srpm-macros
-Summary:    SRPM macros for building RPMs with Python 3.8
+Summary:    SRPM macros for building RPMs with Python 3.10
 BuildArch:  noarch
 %{?scl:Requires: %{scl}-runtime}
 
 %description srpm-macros
-SRPM macros for building RPMs with Python 3.8 from the python38 module.
+SRPM macros for building RPMs with Python 3.10 from the python310 module.
 These macros need to be in the minimal buildroot.
 
 
@@ -703,22 +714,27 @@ rm -r Modules/expat
 #
 %patch1 -p1
 
-%if "%{_lib}" == "lib64"
-%patch102 -p1
-%endif
-%patch111 -p1
+#if "%{_lib}" == "lib64"
+#patch102 -p1
+#endif
+#patch111 -p1
 
 %if %{with rpmwheels}
-%patch189 -p1
+# patch is not needed anymore
+#patch189 -p1
 rm Lib/ensurepip/_bundled/*.whl
 %endif
 
 %patch251 -p1
 %patch274 -p1
 %patch328 -p1
-%patch329 -p1
-%patch359 -p1
-%patch365 -p1
+#patch329 -p1
+#patch359 -p1
+#patch365 -p1
+%patch500 -p1
+%if 0%{?rhel} == 7
+%patch501 -p1
+%endif
 
 cat %{PATCH300} | sed -e "s/__SCL_NAME__/%{?scl}/" \
                 | patch -p1
@@ -775,13 +791,22 @@ export CXXFLAGS="$RPM_OPT_FLAGS -D_GNU_SOURCE -fPIC -fwrapv"
 export CPPFLAGS="$(pkg-config --cflags-only-I libffi)"
 export OPT="$RPM_OPT_FLAGS -D_GNU_SOURCE -fPIC -fwrapv"
 export LINKCC="gcc"
+%if 0%{?rhel} == 7
+export CFLAGS="$CFLAGS $(pkg-config --cflags openssl11)"
+%else
 export CFLAGS="$CFLAGS $(pkg-config --cflags openssl)"
+%endif
 
 # Passing to the dynamic linker parameters -rpath and --enable-new-dtags causes
 # ld to set RUNPATH instead of RPATH in the executables and libraries
 # Setting RUNPATH resolves rhbz#1479406
+%if 0%{?rhel} == 7
+export LDFLAGS="-L%{_libdir}$RPM_LD_FLAGS -Wl,-rpath,%{_libdir} -Wl,--enable-new-dtags -g $(pkg-config --libs-only-L openssl11)"
+export LDFLAGS_NODIST="-L%{_libdir}$RPM_LD_FLAGS -Wl,-rpath,%{_libdir} -Wl,--enable-new-dtags -fno-semantic-interposition -g $(pkg-config --libs-only-L openssl11)"
+%else
 export LDFLAGS="-L%{_libdir}$RPM_LD_FLAGS -Wl,-rpath,%{_libdir} -Wl,--enable-new-dtags -g $(pkg-config --libs-only-L openssl)"
 export LDFLAGS_NODIST="-L%{_libdir}$RPM_LD_FLAGS -Wl,-rpath,%{_libdir} -Wl,--enable-new-dtags -fno-semantic-interposition -g $(pkg-config --libs-only-L openssl)"
+%endif
 
 # We can build several different configurations of Python: regular and debug.
 # Define a common function that does one build:
@@ -802,7 +827,6 @@ BuildPython() {
   %global _configure $topdir/configure
 
 %configure \
-  --enable-ipv6 \
   --enable-shared \
   --with-computed-gotos=%{computed_gotos_flag} \
   --with-dbmliborder=gdbm:ndbm:bdb \
@@ -812,6 +836,10 @@ BuildPython() {
   --with-dtrace \
   --with-lto \
   --with-ssl-default-suites=openssl \
+  --with-platlibdir=%{_lib} \
+%if %{with rpmwheels}
+  --with-wheel-pkg-dir=%{?scl_prefix}%{_datadir}/python-wheels \
+%endif
 %if %{with valgrind}
   --with-valgrind \
 %endif
@@ -1178,7 +1206,7 @@ CheckPython() {
   #   - test_no_optimize_flag
   #   - test_quiet
   #   they run rpmbuild and crash on:
-  #     /usr/lib/rpm/brp-python-bytecompile: line 44: /usr/bin/python3.8: No such file or directory
+  #     /usr/lib/rpm/brp-python-bytecompile: line 44: /usr/bin/python3.10: No such file or directory
   #   because %%_os_install_post isn't overriden
 
   echo FINISHED: CHECKING OF PYTHON FOR CONFIGURATION: $ConfName
@@ -1280,6 +1308,8 @@ CheckPython optimized
 %else
 %dir %{pylibdir}/ensurepip/_bundled
 %{pylibdir}/ensurepip/_bundled/*.whl
+%{pylibdir}/ensurepip/_bundled/__init__.py
+%{pylibdir}/ensurepip/_bundled/__pycache__/*%{bytecode_suffixes}
 %endif
 
 %dir %{pylibdir}/concurrent/
@@ -1295,8 +1325,11 @@ CheckPython optimized
 %{pylibdir}/pydoc_data
 
 %{dynload_dir}/_blake2.%{SOABI_optimized}.so
+%{dynload_dir}/_md5.%{SOABI_optimized}.so
+%{dynload_dir}/_sha1.%{SOABI_optimized}.so
+%{dynload_dir}/_sha256.%{SOABI_optimized}.so
 %{dynload_dir}/_sha3.%{SOABI_optimized}.so
-%{dynload_dir}/_hmacopenssl.%{SOABI_optimized}.so
+%{dynload_dir}/_sha512.%{SOABI_optimized}.so
 
 %{dynload_dir}/_asyncio.%{SOABI_optimized}.so
 %{dynload_dir}/_bisect.%{SOABI_optimized}.so
@@ -1347,7 +1380,6 @@ CheckPython optimized
 %{dynload_dir}/mmap.%{SOABI_optimized}.so
 %{dynload_dir}/nis.%{SOABI_optimized}.so
 %{dynload_dir}/ossaudiodev.%{SOABI_optimized}.so
-%{dynload_dir}/parser.%{SOABI_optimized}.so
 %{dynload_dir}/_posixshmem.%{SOABI_optimized}.so
 %{dynload_dir}/pyexpat.%{SOABI_optimized}.so
 %{dynload_dir}/readline.%{SOABI_optimized}.so
@@ -1359,8 +1391,10 @@ CheckPython optimized
 %{dynload_dir}/unicodedata.%{SOABI_optimized}.so
 %{dynload_dir}/_uuid.%{SOABI_optimized}.so
 %{dynload_dir}/xxlimited.%{SOABI_optimized}.so
+%{dynload_dir}/xxlimited_35.%{SOABI_optimized}.so
 %{dynload_dir}/_xxsubinterpreters.%{SOABI_optimized}.so
 %{dynload_dir}/zlib.%{SOABI_optimized}.so
+%{dynload_dir}/_zoneinfo.%{SOABI_optimized}.so
 
 %dir %{pylibdir}/site-packages/
 %dir %{pylibdir}/site-packages/__pycache__/
@@ -1411,6 +1445,11 @@ CheckPython optimized
 %{pylibdir}/importlib/*.py
 %{pylibdir}/importlib/__pycache__/*%{bytecode_suffixes}
 
+%dir %{pylibdir}/importlib/metadata/
+%dir %{pylibdir}/importlib/metadata/__pycache__/
+%{pylibdir}/importlib/metadata/*.py
+%{pylibdir}/importlib/metadata/__pycache__/*%{bytecode_suffixes}
+
 %dir %{pylibdir}/json/
 %dir %{pylibdir}/json/__pycache__/
 %{pylibdir}/json/*.py
@@ -1431,6 +1470,7 @@ CheckPython optimized
 
 %{pylibdir}/urllib
 %{pylibdir}/xml
+%{pylibdir}/zoneinfo
 
 %if "%{_lib}" == "lib64"
 %attr(0755,root,root) %dir %{_prefix}/lib/python%{pybasever}
@@ -1457,8 +1497,8 @@ CheckPython optimized
 %endif
 
 # SCL:
-%{?scl:%{_root_prefix}/lib/rpm/pythondeps-scl-38.sh}
-%{?scl:%{_root_prefix}/lib/rpm/redhat/brp-python-bytecompile-with-scl-python-38}
+%{?scl:%{_root_prefix}/lib/rpm/pythondeps-scl-310.sh}
+%{?scl:%{_root_prefix}/lib/rpm/redhat/brp-python-bytecompile-with-scl-python-310}
 %config(noreplace) %{?scl:%_root_sysconfdir}%{!?scl:%_sysconfdir}/rpm/macros.pybytecompile%{?scl:.%{scl}}
 
 # SCL: %%if %%{with main_python}
@@ -1581,8 +1621,11 @@ CheckPython optimized
 # ...with debug builds of the built-in "extension" modules:
 
 %{dynload_dir}/_blake2.%{SOABI_debug}.so
+%{dynload_dir}/_md5.%{SOABI_debug}.so
+%{dynload_dir}/_sha1.%{SOABI_debug}.so
+%{dynload_dir}/_sha256.%{SOABI_debug}.so
 %{dynload_dir}/_sha3.%{SOABI_debug}.so
-%{dynload_dir}/_hmacopenssl.%{SOABI_debug}.so
+%{dynload_dir}/_sha512.%{SOABI_debug}.so
 
 %{dynload_dir}/_asyncio.%{SOABI_debug}.so
 %{dynload_dir}/_bisect.%{SOABI_debug}.so
@@ -1633,7 +1676,6 @@ CheckPython optimized
 %{dynload_dir}/mmap.%{SOABI_debug}.so
 %{dynload_dir}/nis.%{SOABI_debug}.so
 %{dynload_dir}/ossaudiodev.%{SOABI_debug}.so
-%{dynload_dir}/parser.%{SOABI_debug}.so
 %{dynload_dir}/_posixshmem.%{SOABI_debug}.so
 %{dynload_dir}/pyexpat.%{SOABI_debug}.so
 %{dynload_dir}/readline.%{SOABI_debug}.so
@@ -1644,9 +1686,12 @@ CheckPython optimized
 %{dynload_dir}/termios.%{SOABI_debug}.so
 %{dynload_dir}/unicodedata.%{SOABI_debug}.so
 %{dynload_dir}/_uuid.%{SOABI_debug}.so
+%{dynload_dir}/xxlimited.%{SOABI_debug}.so
+%{dynload_dir}/xxlimited_35.%{SOABI_debug}.so
 %{dynload_dir}/_xxsubinterpreters.%{SOABI_debug}.so
 %{dynload_dir}/_xxtestfuzz.%{SOABI_debug}.so
 %{dynload_dir}/zlib.%{SOABI_debug}.so
+%{dynload_dir}/_zoneinfo.%{SOABI_debug}.so
 
 # No need to split things out the "Makefile" and the config-32/64.h file as we
 # do for the regular build above (bug 531901), since they're all in one package
@@ -1702,6 +1747,16 @@ CheckPython optimized
 # ======================================================
 
 %changelog
+* Fri Oct 22 2021 Anton Samets <a_samets@wargaming.net> - 3.10.0-1
+- WGSA-45276: SCL python3.10.
+- Patches:
+Removed old patches, modified old one
+Added 2 more patches for OpenSSL 1.1.1 from epel repo and fix https://bugs.python.org/issue45329 (should
+be fixed in 3.10.1, already in upstream, but in 3.10.0 generates segfault during tests)
+Many thanks for https://github.com/fedora-python/cpython/commits/fedora-3.10 and for SPEC files
+from python3.10-3.10.0-2.fc36.src.rpm
+Because it has bundled pip and setuptools - it's enough for starting use python 3.10 on RHEL7 (CentOS7)
+
 * Thu Jul 22 2021 Charalampos Stratakis <cstratak@redhat.com> - 3.8.11-2
 - Security fix for CVE-2021-29921: Leading zeros in IPv4 addresses are no longer tolerated
 Resolves: rhbz#1957458
